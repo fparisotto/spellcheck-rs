@@ -1,5 +1,5 @@
 {
-  description = "spell-checkrs";
+  description = "spellchecke-rs";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -28,7 +28,7 @@
         };
 
         packages.default = pkgs.rustPlatform.buildRustPackage {
-          name = "spell-checkrs";
+          name = "spellchecke-rs";
           src = ./.;
           cargoLock = {
             lockFile = ./Cargo.lock;

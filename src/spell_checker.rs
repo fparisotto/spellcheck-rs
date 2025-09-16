@@ -20,19 +20,24 @@ impl SpellChecker {
     }
 
     pub async fn check_text(&self, text: &str) -> Result<SpellCheckResult> {
-        let default_prompt = String::new();
-        let system_prompt = self.config
-            .system_prompt
-            .as_ref()
-            .unwrap_or(&default_prompt);
+        // Build messages with proper roles
+        let mut messages = vec![];
         
-        let full_prompt = format!("{}\n\nText to check: {}", system_prompt, text);
-        let user_message = ChatMessage::user(full_prompt);
+        // Add system prompt if configured
+        if let Some(system_prompt) = &self.config.system_prompt {
+            if !system_prompt.is_empty() {
+                messages.push(ChatMessage::system(system_prompt.to_string()));
+            }
+        }
         
-        let history = Arc::new(Mutex::new(vec![user_message.clone()]));
-        let request = ChatMessageRequest::new(self.config.model.clone(), vec![user_message]);
+        // Add user message with text to check
+        messages.push(ChatMessage::user(format!("Text to check: {}", text)));
 
-        let mut stream = self.client
+        let history = Arc::new(Mutex::new(messages.clone()));
+        let request = ChatMessageRequest::new(self.config.model.clone(), messages);
+
+        let mut stream = self
+            .client
             .send_chat_messages_with_history_stream(history, request)
             .await?;
 
@@ -45,7 +50,6 @@ impl SpellChecker {
 
         self.parse_response(&response_content, text)
     }
-
 
     fn parse_response(&self, response: &str, original_text: &str) -> Result<SpellCheckResult> {
         let response = response.trim();
