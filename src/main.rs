@@ -1,5 +1,4 @@
 mod config;
-mod ollama_client;
 mod spell_checker;
 
 use anyhow::Result;

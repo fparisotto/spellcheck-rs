@@ -1,35 +1,42 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use colored::*;
 use futures_util::StreamExt;
+use ollama_rs::Ollama;
 use ollama_rs::generation::chat::{ChatMessage, request::ChatMessageRequest};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 
 use crate::config::Config;
-use crate::ollama_client::OllamaClient;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpellCheckResult {
+    pub original_text: String,
+    pub corrected_text: String,
+}
 
 pub struct SpellChecker {
-    client: OllamaClient,
+    client: Ollama,
     config: Config,
 }
 
 impl SpellChecker {
     pub fn new(config: Config) -> Result<Self> {
-        let client = OllamaClient::new(&config.ollama_host)?;
+        let url = config.ollama_host.parse().context("Invalid Ollama host URL")?;
+        let client = Ollama::from_url(url);
         Ok(Self { client, config })
     }
 
     pub async fn check_text(&self, text: &str) -> Result<SpellCheckResult> {
         // Build messages with proper roles
         let mut messages = vec![];
-        
+
         // Add system prompt if configured
-        if let Some(system_prompt) = &self.config.system_prompt {
-            if !system_prompt.is_empty() {
-                messages.push(ChatMessage::system(system_prompt.to_string()));
-            }
+        if let Some(system_prompt) = &self.config.system_prompt
+            && !system_prompt.is_empty()
+        {
+            messages.push(ChatMessage::system(system_prompt.to_string()));
         }
-        
+
         // Add user message with text to check
         messages.push(ChatMessage::user(format!("Text to check: {}", text)));
 
@@ -81,8 +88,3 @@ impl SpellChecker {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SpellCheckResult {
-    pub original_text: String,
-    pub corrected_text: String,
-}
