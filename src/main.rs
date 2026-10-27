@@ -16,36 +16,59 @@ use crate::spell_checker::{SpellChecker, format_diff};
 const PASTE_GAP: Duration = Duration::from_millis(50);
 
 const USAGE: &str = "\
-Usage: spellcheck-rs [OPTIONS]
+Usage: spellcheck-rs [OPTIONS] [TEXT]...
 
-Reads text from stdin when it is piped, otherwise starts an interactive prompt.
+Checks TEXT when it is given. Otherwise reads text from stdin when it is piped,
+or starts an interactive prompt.
 
 Options:
-  -p, --plain    Interactive mode: print only the corrected text, ready to copy
-  -h, --help     Print this help";
+  -p, --plain    Print only the corrected text, ready to copy
+  -h, --help     Print this help
+  --             Treat all following arguments as text";
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let mut plain = false;
-    for arg in std::env::args().skip(1) {
+    let mut words = vec![];
+    let mut args = std::env::args().skip(1);
+    while let Some(arg) = args.next() {
         match arg.as_str() {
             "-p" | "--plain" => plain = true,
             "-h" | "--help" => {
                 println!("{USAGE}");
                 return Ok(());
             }
-            _ => anyhow::bail!("unknown argument '{arg}'\n\n{USAGE}"),
+            "--" => words.extend(args.by_ref()),
+            _ if arg.starts_with('-') => anyhow::bail!("unknown argument '{arg}'\n\n{USAGE}"),
+            _ => words.push(arg),
         }
     }
 
     let config = Config::load()?;
     let spell_checker = SpellChecker::new(config.clone())?;
 
-    if io::stdin().is_terminal() {
+    if !words.is_empty() {
+        run_args_mode(&spell_checker, &words.join(" "), plain).await
+    } else if io::stdin().is_terminal() {
         run_interactive_mode(&config, Arc::new(spell_checker), plain).await
     } else {
         run_piped_mode(&spell_checker).await
     }
+}
+
+async fn run_args_mode(spell_checker: &SpellChecker, text: &str, plain: bool) -> Result<()> {
+    let text = text.trim();
+    if text.is_empty() {
+        return Ok(());
+    }
+    let corrected = spell_checker.check_text(text).await?;
+    // A diff without colors is unreadable, so redirected output is always plain.
+    if plain || !io::stdout().is_terminal() {
+        println!("{corrected}");
+    } else {
+        println!("{}", format_diff(text, &corrected));
+    }
+    Ok(())
 }
 
 async fn run_interactive_mode(

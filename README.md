@@ -55,6 +55,17 @@ To get output that is ready to copy, use `--plain` (`-p`). The corrected text is
 spellcheck-rs --plain
 ```
 
+### Text Arguments
+
+Give the text as arguments to check it once and exit:
+
+```bash
+spellcheck-rs -p "Their is a eror here"   # prints: There is an error here
+spellcheck-rs "Their is a eror here"      # prints a word diff
+```
+
+With `-p`, or when the output is redirected, only the corrected text is printed. Use `--` before text that starts with `-`.
+
 ### Pipe Redirection
 
 The spell checker can be used with pipe redirects for powerful workflows:

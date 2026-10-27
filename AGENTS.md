@@ -53,6 +53,7 @@ The application follows a modular architecture with clear separation of concerns
 
 1. **`main.rs`**: Entry point and main loop
    - Interactive mode (TTY): a stdin reader thread feeds lines into a channel; lines that arrive within `PASTE_GAP` (a paste) form one check; word diff output, or the plain corrected text with `--plain`; preloads the model at startup
+   - Args mode: `spellcheck-rs [-p] TEXT...` checks the joined arguments once; word diff on a terminal, plain text with `-p` or when stdout is redirected
    - Piped mode: reads all of stdin, prints only the corrected text
    - Exit with Ctrl+D or Ctrl+C
 
