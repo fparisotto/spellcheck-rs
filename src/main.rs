@@ -15,19 +15,44 @@ use crate::spell_checker::{SpellChecker, format_diff};
 /// Lines that arrive within this gap belong to the same pasted text.
 const PASTE_GAP: Duration = Duration::from_millis(50);
 
+const USAGE: &str = "\
+Usage: spellcheck-rs [OPTIONS]
+
+Reads text from stdin when it is piped, otherwise starts an interactive prompt.
+
+Options:
+  -p, --plain    Interactive mode: print only the corrected text, ready to copy
+  -h, --help     Print this help";
+
 #[tokio::main]
 async fn main() -> Result<()> {
+    let mut plain = false;
+    for arg in std::env::args().skip(1) {
+        match arg.as_str() {
+            "-p" | "--plain" => plain = true,
+            "-h" | "--help" => {
+                println!("{USAGE}");
+                return Ok(());
+            }
+            _ => anyhow::bail!("unknown argument '{arg}'\n\n{USAGE}"),
+        }
+    }
+
     let config = Config::load()?;
     let spell_checker = SpellChecker::new(config.clone())?;
 
     if io::stdin().is_terminal() {
-        run_interactive_mode(&config, Arc::new(spell_checker)).await
+        run_interactive_mode(&config, Arc::new(spell_checker), plain).await
     } else {
         run_piped_mode(&spell_checker).await
     }
 }
 
-async fn run_interactive_mode(config: &Config, spell_checker: Arc<SpellChecker>) -> Result<()> {
+async fn run_interactive_mode(
+    config: &Config,
+    spell_checker: Arc<SpellChecker>,
+    plain: bool,
+) -> Result<()> {
     println!("✏️  Smart Spell Checker");
     println!("Model: {}", config.model);
     println!("Host: {}", config.ollama_host);
@@ -64,6 +89,8 @@ async fn run_interactive_mode(config: &Config, spell_checker: Arc<SpellChecker>)
 
         let started = Instant::now();
         match spell_checker.check_text(input).await {
+            Ok(corrected) if plain && corrected == input => println!("✓ No errors found!\n"),
+            Ok(corrected) if plain => println!("{corrected}\n"),
             Ok(corrected) => {
                 println!("{}", format_diff(input, &corrected));
                 println!("({:.1}s)\n", started.elapsed().as_secs_f32());

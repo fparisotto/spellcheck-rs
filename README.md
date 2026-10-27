@@ -49,6 +49,12 @@ The application will display:
 
 Press `Ctrl+D` or `Ctrl+C` to exit the application.
 
+To get output that is ready to copy, use `--plain` (`-p`). The corrected text is printed with no colors and no diff:
+
+```bash
+spellcheck-rs --plain
+```
+
 ### Pipe Redirection
 
 The spell checker can be used with pipe redirects for powerful workflows:
