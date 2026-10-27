@@ -965,7 +965,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "spellchecke-rs"
+name = "spellcheck-rs"
 version = "0.1.0"
 dependencies = [
  "anyhow",

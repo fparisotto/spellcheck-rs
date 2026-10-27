@@ -1,5 +1,5 @@
 {
-  description = "spellchecke-rs: offline spell checker backed by a local Ollama model";
+  description = "spellcheck-rs: offline spell checker backed by a local Ollama model";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -67,7 +67,7 @@
       );
 
       overlays.default = final: _prev: {
-        spellchecke-rs = self.packages.${final.stdenv.hostPlatform.system}.default;
+        spellcheck-rs = self.packages.${final.stdenv.hostPlatform.system}.default;
       };
 
       devShells = forAllSystems (pkgs: {
