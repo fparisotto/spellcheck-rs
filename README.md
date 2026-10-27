@@ -6,15 +6,17 @@ A smart spell checker powered by Ollama that identifies and corrects spelling, g
 
 - **Spell Checking**: Detects and corrects spelling mistakes
 - **Grammar Correction**: Identifies and fixes grammatical errors
-- **Simple Output**: Clean, concise correction format
-- **Colored Output**: Visual highlighting with green for corrected text
-- **Streaming Response**: Real-time response from Ollama API
+- **Word Diff**: Removed words in red strikethrough, added words in green
+- **Fast**: Thinking is off, the model is preloaded at startup and stays in VRAM
+- **Offline**: Everything runs on a local Ollama instance
+- **Multi-line Input**: Paste several lines; they are checked as one text
+- **Code and URL Protection**: `inline code`, fenced code blocks, and URLs are never changed
 
 ## Prerequisites
 
 - Rust 2024 Edition or later
 - Ollama running locally (default: http://localhost:11434)
-- An Ollama model installed (default: gemma3:4b)
+- An Ollama model installed (default: gemma4:e4b, install with `ollama pull gemma4:e4b`)
 
 ## Installation
 
@@ -34,7 +36,7 @@ cargo run
 
 ### Interactive Mode
 
-Simply run the application and type your text:
+Run the application and type or paste your text. A typed line is checked when you press Enter. A pasted block of lines is checked as one text:
 
 ```bash
 cargo run
@@ -43,9 +45,9 @@ cargo run
 The application will display:
 - Model and host information
 - Prompt to enter text
-- After checking, it will show either "✓ No errors found!" or the corrected text
+- After checking, it will show either "✓ No errors found!" or a word diff of the corrections
 
-Press `Ctrl+C` to exit the application.
+Press `Ctrl+D` or `Ctrl+C` to exit the application.
 
 ### Pipe Redirection
 
@@ -73,35 +75,37 @@ cat *.txt | spellcheck-rs
 
 ```bash
 ✏️  Smart Spell Checker
-Model: gemma3:4b
+Model: gemma4:e4b
 Host: http://localhost:11434
 Type your text to check for spelling and grammar errors.
-Press Ctrl+C
+Press Ctrl+D or Ctrl+C to exit
 ----------------------------------------
 
-Enter text to check (or command):
 > Their are grammer mistakes here.
-
-🔍 Checking text...
-
-Corrected text:
-There are grammar mistakes here.
+~~Their~~There are ~~grammer~~grammar mistakes here.
+(0.3s)
 ```
 
 For text without errors:
 ```bash
-Enter text to check (or command):
 > This sentence is correct.
-
-🔍 Checking text...
-
 ✓ No errors found!
+(0.2s)
 ```
 
 ## Configuration
 
-The application creates a configuration file at `~/.config/spell-checkers/config.json` with the following options:
+If `~/.config/spell-checkers/config.json` does not exist, the application uses the defaults and writes them to that file. Every field is optional:
 
-- `ollama_host`: Ollama server URL (default: "http://localhost:11434")
-- `model`: Ollama model to use (default: "gemma3:4b")
-- `system_prompt`: Custom prompt for the AI model
+```json
+{
+  "ollama_host": "http://localhost:11434",
+  "model": "gemma4:e4b",
+  "keep_alive": "1h"
+}
+```
+
+- `ollama_host`: Ollama server URL
+- `model`: Ollama model to use. Fast choices on a 16 GB GPU: `gemma4:e4b` (default), `gemma4:e2b` (fastest), `gemma4:12b` (largest)
+- `keep_alive`: how long the model stays loaded after a check (default `"1h"`), for example `"30m"`, `"2h"`, or `-1` for always
+- `system_prompt`: replaces the built-in prompt. Leave it out to get prompt improvements in new versions

@@ -1,88 +1,105 @@
 mod config;
+mod mask;
 mod spell_checker;
 
 use anyhow::Result;
-use std::io::{self, IsTerminal, Write};
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
+use std::io::{self, BufRead, IsTerminal, Read, Write};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use tokio::sync::mpsc;
+use tokio::time::timeout;
 
 use crate::config::Config;
-use crate::spell_checker::SpellChecker;
+use crate::spell_checker::{SpellChecker, format_diff};
+
+/// Lines that arrive within this gap belong to the same pasted text.
+const PASTE_GAP: Duration = Duration::from_millis(50);
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let config = Config::load()?;
     let spell_checker = SpellChecker::new(config.clone())?;
 
-    let stdin = std::io::stdin();
-
-    if stdin.is_terminal() {
-        run_interactive_mode(&config, &spell_checker).await
+    if io::stdin().is_terminal() {
+        run_interactive_mode(&config, Arc::new(spell_checker)).await
     } else {
         run_piped_mode(&spell_checker).await
     }
 }
 
-async fn run_interactive_mode(config: &Config, spell_checker: &SpellChecker) -> Result<()> {
+async fn run_interactive_mode(config: &Config, spell_checker: Arc<SpellChecker>) -> Result<()> {
     println!("✏️  Smart Spell Checker");
     println!("Model: {}", config.model);
     println!("Host: {}", config.ollama_host);
-    println!("Type your text to check for spelling and grammar errors.");
-    println!("Press Ctrl+C");
+    println!("Type or paste text (multiple lines are fine) to check spelling and grammar.");
+    println!("Press Ctrl+D or Ctrl+C to exit");
     println!("----------------------------------------\n");
 
-    let stdin = tokio::io::stdin();
-    let mut reader = BufReader::new(stdin);
+    let warm_up = Arc::clone(&spell_checker);
+    tokio::spawn(async move {
+        if let Err(e) = warm_up.warm_up().await {
+            eprintln!("\n❌ {e:#}\n   Is Ollama running? Is the model pulled?");
+        }
+    });
 
+    let mut lines = spawn_line_reader();
     loop {
-        println!("Enter text to check (or command):");
         print!("> ");
         io::stdout().flush()?;
 
-        let mut input = String::new();
-        reader.read_line(&mut input).await?;
-        let input = input.trim();
+        let Some(first) = lines.recv().await else {
+            println!();
+            return Ok(());
+        };
+        let mut input = first;
+        while let Ok(Some(line)) = timeout(PASTE_GAP, lines.recv()).await {
+            input.push('\n');
+            input.push_str(&line);
+        }
 
+        let input = input.trim();
         if input.is_empty() {
             continue;
         }
 
-        println!("\n🔍 Checking text...");
-        check_text(spell_checker, input).await;
+        let started = Instant::now();
+        match spell_checker.check_text(input).await {
+            Ok(corrected) => {
+                println!("{}", format_diff(input, &corrected));
+                println!("({:.1}s)\n", started.elapsed().as_secs_f32());
+            }
+            Err(e) => eprintln!("❌ Error checking text: {e:#}\n"),
+        }
     }
+}
+
+/// Reads stdin on a plain thread, so that waiting for the next line can time out.
+fn spawn_line_reader() -> mpsc::UnboundedReceiver<String> {
+    let (tx, rx) = mpsc::unbounded_channel();
+    std::thread::spawn(move || {
+        for line in io::stdin().lock().lines() {
+            let Ok(line) = line else { break };
+            if tx.send(line).is_err() {
+                break;
+            }
+        }
+    });
+    rx
 }
 
 async fn run_piped_mode(spell_checker: &SpellChecker) -> Result<()> {
-    let mut stdin = tokio::io::stdin();
     let mut input = String::new();
-    stdin.read_to_string(&mut input).await?;
+    io::stdin().read_to_string(&mut input)?;
 
-    let input = input.trim();
-    if !input.is_empty() {
-        match spell_checker.check_text(input).await {
-            Ok(result) => {
-                if result.original_text == result.corrected_text {
-                    print!("{}", result.original_text);
-                } else {
-                    print!("{}", result.corrected_text);
-                }
-            }
-            Err(e) => {
-                eprintln!("Error: {}", e);
-                std::process::exit(1);
-            }
-        }
+    let text = input.trim();
+    if text.is_empty() {
+        return Ok(());
     }
 
+    let corrected = spell_checker.check_text(text).await?;
+    print!("{corrected}");
+    if input.ends_with('\n') {
+        println!();
+    }
     Ok(())
-}
-
-async fn check_text(spell_checker: &SpellChecker, text: &str) {
-    match spell_checker.check_text(text).await {
-        Ok(result) => {
-            println!("\n{}", spell_checker.format_result(&result));
-        }
-        Err(e) => {
-            eprintln!("\n❌ Error checking text: {}", e);
-        }
-    }
 }
